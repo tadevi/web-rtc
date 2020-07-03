@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "432697275037",
+    "firebase_url": "https://fir-rtc-d3899.firebaseio.com",
+    "project_id": "fir-rtc-d3899",
+    "storage_bucket": "fir-rtc-d3899.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:432697275037:android:a9fb8a554fd230630bda74",
+        "android_client_info": {
+          "package_name": "com.example.my_webrtc"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "432697275037-6e90m8jsecvosedl8u9lul3rnkm6vhps.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDw50R6N-zDBonfl97WbEH5j6sUkJTr1Gk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "432697275037-6e90m8jsecvosedl8u9lul3rnkm6vhps.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
