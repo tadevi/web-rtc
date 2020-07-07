@@ -9,6 +9,6 @@ class App : Application() {
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(this).createInitializationOptions()
         )
-        CurrentUserPreference.init(this)
+        LoginUser.init(this)
     }
 }

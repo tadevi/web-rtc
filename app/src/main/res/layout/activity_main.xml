@@ -10,6 +10,7 @@
         android:id="@+id/remoteView"
         android:layout_width="401dp"
         android:layout_height="459dp"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
@@ -41,6 +42,7 @@
         android:layout_width="203dp"
         android:layout_height="224dp"
         android:layout_marginBottom="232dp"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.975"
