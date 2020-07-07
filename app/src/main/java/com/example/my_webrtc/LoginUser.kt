@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 
-object CurrentUserPreference {
+object LoginUser {
     private lateinit var sharePrefs: SharedPreferences
     fun init(context: Context) {
         sharePrefs = context.getSharedPreferences("user", Context.MODE_PRIVATE)
