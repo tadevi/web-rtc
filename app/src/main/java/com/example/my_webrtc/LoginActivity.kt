@@ -18,16 +18,13 @@ class LoginActivity : AppCompatActivity() {
         btnLogin.setOnClickListener {
             progressBar.visibility = View.VISIBLE
             Firebase.firestore
-                .collection(etUserName.text.toString())
-                .document("last_login")
+                .collection("rooms")
+                .document(etUserName.text.toString())
                 .set(hashMapOf("date_update" to System.currentTimeMillis()))
                 .addOnSuccessListener {
                     Toast.makeText(this, "Login successfully", Toast.LENGTH_SHORT).show()
                     LoginUser.setUser(etUserName.text.toString())
 
-                    Firebase.firestore
-                        .collection(LoginUser.getUser())
-                        .do
                     initSignal()
                 }
                 .addOnFailureListener {
@@ -40,10 +37,8 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun initSignal() {
-        SignalClient.initUser(LoginUser.getUser())
-
         // response signal call
-        SignalClient.addOnReceiveSessionDescription { from, sessionDescription ->
+        SignalClient.registerReceiveSdpCallback { from, sessionDescription ->
             val intent = Intent(this, CallActivity::class.java)
             intent.putExtra(
                 "session_description",
@@ -53,18 +48,19 @@ class LoginActivity : AppCompatActivity() {
         }
 
         // response signal connect
-        SignalClient.addOnReceiveIceCandidate { from, iceCandidate ->
+        SignalClient.registerReceiveCandidateCallback { from, iceCandidate ->
             val intent = Intent(this, CallActivity::class.java)
             intent.putExtra("candidate", ExtraIceCandidate.from(from, iceCandidate))
 
             startActivity(intent)
         }
 
-        SignalClient.addOnHangupEvent {
-            val intent = Intent(this, CallActivity::class.java)
-            intent.putExtra("hang_up", true)
-            startActivity(intent)
-        }
+//        SignalClient.addOnHangupEvent {
+//            val intent = Intent(this, CallActivity::class.java)
+//            intent.putExtra("hang_up", true)
+//            startActivity(intent)
+//        }
+        SignalClient.init()
 
         startActivity(Intent(this, MainActivity::class.java))
     }

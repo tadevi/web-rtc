@@ -2,21 +2,27 @@ package com.example.my_webrtc
 
 import android.content.Intent
 import android.os.Bundle
+import android.telecom.Call
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import kotlinx.android.synthetic.main.activity_call.*
+import kotlinx.android.synthetic.main.activity_main.*
 import org.webrtc.*
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnection.IceServer
 
-
 class CallActivity : AppCompatActivity() {
     private lateinit var peerConnectionFactory: PeerConnectionFactory
-    private lateinit var peerConnection: PeerConnection
     private lateinit var opposite: String
     private lateinit var extraIceCandidate: ExtraIceCandidate
     private lateinit var extraSessionDescription: ExtraSessionDescription
+    private lateinit var peerConnection: PeerConnection
+    private val eglBase = EglBase.create()
+
+    private lateinit var rtcClient: Client
+    private var ice = false
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,20 +42,37 @@ class CallActivity : AppCompatActivity() {
             intent.hasExtra("session_description") -> {
                 extraSessionDescription = intent.getParcelableExtra("session_description")!!
                 opposite = extraSessionDescription.from
+
+                if (!this::rtcClient.isInitialized) {
+                    rtcClient = Callee(opposite, peerConnection)
+                }
+
+                if (rtcClient is Caller) {
+                    rtcClient.onEvent(
+                        Caller.RECEIVE_SDP,
+                        extraSessionDescription.getSessionDescription()
+                    )
+                }
+
             }
 
             intent.hasExtra("candidate") -> {
                 extraIceCandidate = intent.getParcelableExtra("candidate")!!
-                opposite = extraIceCandidate.from
 
-                onAddCandidate(extraIceCandidate)
+                if (rtcClient is Caller) {
+                    rtcClient.onEvent(Caller.RECEIVE_ICE, extraIceCandidate.getIceCandidate())
+                } else {
+                    rtcClient.onEvent(Callee.RECEIVE_ICE, extraIceCandidate.getIceCandidate())
+                }
             }
 
             intent.hasExtra("callee") -> {
+                // you are caller
                 opposite = intent.getStringExtra("callee")!!
-                makeCall()
-
                 btnReceive.isVisible = false
+
+                rtcClient = Caller(opposite, peerConnection)
+                rtcClient.onEvent(Caller.MAKE_CALL, null)
             }
 
             intent.hasExtra("hang_up") -> {
@@ -60,64 +83,16 @@ class CallActivity : AppCompatActivity() {
         }
     }
 
-    private fun onAddCandidate(candidate: ExtraIceCandidate) {
-        peerConnection.addIceCandidate(candidate.getIceCandidate())
-    }
-
-    private fun doAnswer(extraSessionDescription: ExtraSessionDescription) {
-        when (SessionDescription.Type.fromCanonicalForm(extraSessionDescription.type)) {
-            SessionDescription.Type.ANSWER -> {
-                // you are caller
-                peerConnection.setRemoteDescription(
-                    CustomSdpObserver("receiveAnswer"),
-                    extraSessionDescription.getSessionDescription()
-                )
-
-            }
-            SessionDescription.Type.OFFER -> {
-                // you are callee
-                peerConnection.setRemoteDescription(
-                    CustomSdpObserver("receiveOffer"),
-                    extraSessionDescription.getSessionDescription()
-                )
-
-                peerConnection.createAnswer(object : CustomSdpObserver("createAnswer") {
-                    override fun onCreateSuccess(description: SessionDescription) {
-                        super.onCreateSuccess(description)
-
-                        SignalClient.emitSessionDescription(
-                            LoginUser.getUser(),
-                            opposite,
-                            description
-                        )
-                    }
-                }, MediaConstraints())
-            }
-            else -> finish()
-        }
-        peerConnection.setRemoteDescription(
-            CustomSdpObserver("receiveOffer"),
-            extraSessionDescription.getSessionDescription()
-        )
-
-        peerConnection.createAnswer(object : CustomSdpObserver("sendAnswer") {
-            override fun onCreateSuccess(description: SessionDescription) {
-                super.onCreateSuccess(description)
-
-                peerConnection.setLocalDescription(CustomSdpObserver("localDesc"), description)
-
-                SignalClient.emitSessionDescription(
-                    LoginUser.getUser(),
-                    opposite,
-                    description
-                )
-            }
-        }, MediaConstraints())
-    }
-
     private fun start() {
         peerConnectionFactory = PeerConnectionFactory.builder()
+            .setVideoEncoderFactory(DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true))
+            .setVideoDecoderFactory(DefaultVideoDecoderFactory(eglBase.eglBaseContext))
             .createPeerConnectionFactory()
+
+        localView.init(eglBase.eglBaseContext, null)
+        remoteView.init(eglBase.eglBaseContext, null)
+        localView.setZOrderMediaOverlay(true)
+        remoteView.setZOrderMediaOverlay(true)
 
         createPeerConnection()
 
@@ -125,11 +100,15 @@ class CallActivity : AppCompatActivity() {
 
         btnReceive.setOnClickListener {
             btnReceive.isVisible = false
-            doAnswer(extraSessionDescription)
+
+            rtcClient.onEvent(
+                Callee.RECEIVE_CALL,
+                extraSessionDescription.getSessionDescription()
+            )
         }
 
         btnReject.setOnClickListener {
-            SignalClient.emitHangupEvent(LoginUser.getUser(), opposite)
+//            SignalClient.emitHangupEvent(LoginUser.getUser(), opposite)
             finish()
         }
     }
@@ -137,6 +116,8 @@ class CallActivity : AppCompatActivity() {
     private fun createPeerConnection() {
         val rtcConfig = PeerConnection.RTCConfiguration(
             listOf(
+//                IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
+//                IceServer.builder("stun:stun2.l.google.com:19302").createIceServer()
                 IceServer.builder("turn:numb.viagenie.ca")
                     .setUsername("anhvt52@gmail.com").setPassword("123456").createIceServer()
             )
@@ -148,12 +129,23 @@ class CallActivity : AppCompatActivity() {
                 override fun onIceCandidate(candidate: IceCandidate) {
                     super.onIceCandidate(candidate)
 
-                    SignalClient.emitIceCandidate(LoginUser.getUser(), opposite, candidate)
+                    if (ice) return;
+
+                    if (rtcClient is Callee) {
+                        rtcClient.onEvent(Callee.SEND_ICE, candidate)
+                    } else {
+                        rtcClient.onEvent(Caller.SEND_ICE, candidate)
+                    }
+                    ice = true;
                 }
 
                 override fun onAddStream(stream: MediaStream) {
                     super.onAddStream(stream)
 
+                    runOnUiThread {
+                        stream.videoTracks[0].addSink(remoteView)
+                        stream.audioTracks[0].setVolume(50.0)
+                    }
                     showToast("Received remote stream")
                 }
             })!!
@@ -166,24 +158,6 @@ class CallActivity : AppCompatActivity() {
         }
     }
 
-    private fun makeCall() {
-        val mediaConstraints = MediaConstraints()
-        mediaConstraints.mandatory.add(MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"))
-
-        peerConnection.createOffer(object : CustomSdpObserver("makeCall") {
-            override fun onCreateSuccess(description: SessionDescription) {
-                super.onCreateSuccess(description)
-
-                peerConnection.setLocalDescription(
-                    CustomSdpObserver("localDescription"),
-                    description
-                )
-
-                SignalClient.emitSessionDescription(LoginUser.getUser(), opposite, description)
-            }
-        }, mediaConstraints)
-    }
-
     private fun addLocalStreamToPeer() {
         val stream = peerConnectionFactory.createLocalMediaStream("local")
         stream.addTrack(
@@ -192,13 +166,52 @@ class CallActivity : AppCompatActivity() {
                 peerConnectionFactory.createAudioSource(MediaConstraints())
             )
         )
+        stream.addTrack(getVideoTrack())
 
         peerConnection.addStream(stream)
     }
 
+    private fun getVideoTrack(): VideoTrack {
+        val videoCapture = createCameraCapturer(Camera1Enumerator(false))!!
+        val surfaceTextureHelper =
+            SurfaceTextureHelper.create("CaptureThread", eglBase.eglBaseContext)
+        val videoSource = peerConnectionFactory.createVideoSource(videoCapture.isScreencast)
+        videoCapture.initialize(surfaceTextureHelper, this, videoSource.capturerObserver)
+
+        val videoTrack = peerConnectionFactory.createVideoTrack("video", videoSource)
+        videoCapture.startCapture(1024, 720, 30)
+        videoTrack.addSink(localView)
+        localView.setMirror(true)
+
+        return videoTrack
+    }
+
+    private fun createCameraCapturer(enumerator: CameraEnumerator): VideoCapturer? {
+        val deviceNames = enumerator.deviceNames
+
+        for (deviceName in deviceNames) {
+            if (enumerator.isFrontFacing(deviceName)) {
+                val videoCapturer: VideoCapturer? = enumerator.createCapturer(deviceName, null)
+                if (videoCapturer != null) {
+                    return videoCapturer
+                }
+            }
+        }
+
+        for (deviceName in deviceNames) {
+            if (!enumerator.isFrontFacing(deviceName)) {
+                val videoCapturer: VideoCapturer? = enumerator.createCapturer(deviceName, null)
+                if (videoCapturer != null) {
+                    return videoCapturer
+                }
+            }
+        }
+        return null
+    }
 
     override fun onDestroy() {
         super.onDestroy()
         peerConnection.close()
+        SignalClient.clear()
     }
 }
