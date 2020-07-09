@@ -21,7 +21,6 @@ class CallActivity : AppCompatActivity() {
     private val eglBase = EglBase.create()
 
     private lateinit var rtcClient: Client
-    private var ice = false
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,7 +57,6 @@ class CallActivity : AppCompatActivity() {
 
             intent.hasExtra("candidate") -> {
                 extraIceCandidate = intent.getParcelableExtra("candidate")!!
-
                 if (rtcClient is Caller) {
                     rtcClient.onEvent(Caller.RECEIVE_ICE, extraIceCandidate.getIceCandidate())
                 } else {
@@ -126,17 +124,14 @@ class CallActivity : AppCompatActivity() {
         peerConnection = peerConnectionFactory.createPeerConnection(
             rtcConfig,
             object : CustomPeerConnectionObserver() {
+                private var number = 0
                 override fun onIceCandidate(candidate: IceCandidate) {
                     super.onIceCandidate(candidate)
-
-                    if (ice) return;
-
                     if (rtcClient is Callee) {
                         rtcClient.onEvent(Callee.SEND_ICE, candidate)
                     } else {
                         rtcClient.onEvent(Caller.SEND_ICE, candidate)
                     }
-                    ice = true;
                 }
 
                 override fun onAddStream(stream: MediaStream) {

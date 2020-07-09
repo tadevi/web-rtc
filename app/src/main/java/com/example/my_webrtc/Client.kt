@@ -15,10 +15,10 @@ class Caller(val callee: String, val peerConnection: PeerConnection) : Client {
     private var sdp: SessionDescription? = null
 
     @Volatile
-    private var sendCandidate: IceCandidate? = null
+    private var sendCandidate: MutableList<IceCandidate> = mutableListOf()
 
     @Volatile
-    private var receiveCandidate: IceCandidate? = null
+    private var receiveCandidate: MutableList<IceCandidate> = mutableListOf()
 
     @Volatile
     private var currentStep = MAKE_CALL
@@ -57,33 +57,42 @@ class Caller(val callee: String, val peerConnection: PeerConnection) : Client {
                     currentStep = RECEIVE_SDP
                     peerConnection.setRemoteDescription(CustomSdpObserver("remoteDesc"), sdp)
 
-                    if (sendCandidate != null) {
-                        onEvent(SEND_ICE, sendCandidate)
+                    if (sendCandidate.isNotEmpty()) {
+                        onEvent(SEND_ICE, null)
                     }
                 }
             }
 
             SEND_ICE -> {
-                sendCandidate = data as IceCandidate
+                if (data != null) {
+                    sendCandidate.add(data as IceCandidate)
+                }
 
                 if (currentStep == RECEIVE_SDP) {
                     currentStep = SEND_ICE
-                    SignalClient.emitCandidate(callee, sendCandidate!!)
-
-                    if (receiveCandidate != null) {
-                        onEvent(RECEIVE_ICE, receiveCandidate)
+                    for (candidate in sendCandidate) {
+                        SignalClient.emitCandidate(callee, candidate)
                     }
+
+                    if (receiveCandidate.isNotEmpty()) {
+                        onEvent(RECEIVE_ICE, null)
+                    }
+                    Log.e("Caller", "Send ${sendCandidate.size} candidate")
                 }
             }
 
             RECEIVE_ICE -> {
-                receiveCandidate = data as IceCandidate
+                if (data != null) {
+                    receiveCandidate.add(data as IceCandidate)
+                }
 
                 if (currentStep == SEND_ICE) {
                     currentStep = -1
-
-                    peerConnection.addIceCandidate(receiveCandidate)
+                    for (candidate in receiveCandidate) {
+                        peerConnection.addIceCandidate(candidate)
+                    }
                 }
+                Log.e("Caller", "Receive ${receiveCandidate.size} candidate")
             }
         }
         Log.e("Caller", "Step $event")
@@ -102,10 +111,10 @@ class Callee(val caller: String, val peerConnection: PeerConnection) : Client {
     private var sdp: SessionDescription? = null
 
     @Volatile
-    private var receiveCandidate: IceCandidate? = null
+    private var receiveCandidate: MutableList<IceCandidate> = mutableListOf()
 
     @Volatile
-    private var sendCandidate: IceCandidate? = null
+    private var sendCandidate: MutableList<IceCandidate> = mutableListOf()
 
     @Volatile
     private var currentStep = RECEIVE_CALL
@@ -144,27 +153,34 @@ class Callee(val caller: String, val peerConnection: PeerConnection) : Client {
             }
 
             RECEIVE_ICE -> {
-                receiveCandidate = data as IceCandidate
-
+                if (data != null) {
+                    receiveCandidate.add(data as IceCandidate)
+                }
                 if (currentStep == SEND_SDP) {
                     currentStep = RECEIVE_ICE
-
-                    peerConnection.addIceCandidate(receiveCandidate)
-
-                    if (sendCandidate != null) {
-                        onEvent(SEND_ICE, sendCandidate)
+                    for (candidate in receiveCandidate) {
+                        peerConnection.addIceCandidate(candidate)
                     }
+
+                    if (sendCandidate.isNotEmpty()) {
+                        onEvent(SEND_ICE, null)
+                    }
+                    Log.e("Callee", "Receive ${receiveCandidate.size} candidate")
                 }
             }
 
             SEND_ICE -> {
-                sendCandidate = data as IceCandidate
+                if (data != null) {
+                    sendCandidate.add(data as IceCandidate)
+                }
 
                 if (currentStep == RECEIVE_ICE) {
                     currentStep = -1
-
-                    SignalClient.emitCandidate(caller, sendCandidate!!)
+                    for (candidate in sendCandidate) {
+                        SignalClient.emitCandidate(caller, candidate)
+                    }
                 }
+                Log.e("Callee", "Send ${sendCandidate.size} candidate")
             }
         }
         Log.e("Callee", "Step $event")
